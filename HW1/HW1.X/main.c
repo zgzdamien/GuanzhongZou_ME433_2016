@@ -54,15 +54,33 @@ int main() {
     DDPCONbits.JTAGEN = 0;
     
     // do your TRIS and LAT commands here
-     TRISAbits.TRISA4 = 0;
-     TRISBbits.TRISB4 = 1;
-     LATAbits.LATA4 = 1;
+   
+     
+     TRISAbits.TRISA4 = 1;
+     TRISBbits.TRISB4 = 0;
     
     __builtin_enable_interrupts();
     
     while(1) {
 	    // use _CP0_SET_COUNT(0) and _CP0_GET_COUNT() to test the PIC timing
+        
 		// remember the core timer runs at half the CPU speed
+        if (PORTAbits.RA4 == 0) {
+                LATBbits.LATB4=0;
+            } 
+        else if(PORTAbits.RA4 == 1) {
+            _CP0_SET_COUNT(0);
+            while(_CP0_GET_COUNT()<12000)
+            {
+                LATBbits.LATB4=1;
+            }
+            _CP0_SET_COUNT(0);
+            while(_CP0_GET_COUNT()<12000)
+            {
+                LATBbits.LATB4=0;
+            }
+            }
+              
         
     }
     
