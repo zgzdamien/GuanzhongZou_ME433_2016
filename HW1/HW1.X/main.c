@@ -56,8 +56,8 @@ int main() {
     // do your TRIS and LAT commands here
    
      
-     TRISAbits.TRISA4 = 1;
-     TRISBbits.TRISB4 = 0;
+     TRISAbits.TRISA4 = 1; //set portA4 as input pin for button input
+     TRISBbits.TRISB4 = 0; //set port B4 as output pin for LED
     
     __builtin_enable_interrupts();
     
@@ -65,19 +65,19 @@ int main() {
 	    // use _CP0_SET_COUNT(0) and _CP0_GET_COUNT() to test the PIC timing
         
 		// remember the core timer runs at half the CPU speed
-        if (PORTAbits.RA4 == 0) {
-                LATBbits.LATB4=0;
+        if (PORTAbits.RA4 == 0) { //button pressed
+                LATBbits.LATB4=0; //LED off
             } 
-        else if(PORTAbits.RA4 == 1) {
-            _CP0_SET_COUNT(0);
-            while(_CP0_GET_COUNT()<12000)
+        else if(PORTAbits.RA4 == 1) { //button not pressed
+            _CP0_SET_COUNT(0); //set timer to 0
+            while(_CP0_GET_COUNT()<12000) //48MHz/1000Hz/2/2(half cycle)
             {
-                LATBbits.LATB4=1;
+                LATBbits.LATB4=1;//set LED on
             }
-            _CP0_SET_COUNT(0);
+            _CP0_SET_COUNT(0); //reset timer
             while(_CP0_GET_COUNT()<12000)
             {
-                LATBbits.LATB4=0;
+                LATBbits.LATB4=0; //set LED to 0
             }
             }
               
