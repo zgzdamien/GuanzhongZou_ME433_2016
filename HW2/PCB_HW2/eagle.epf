@@ -350,7 +350,7 @@ UsedLibrary="HWlib.lbr"
 
 [Win_1]
 Type="Control Panel"
-Loc="-11 -11 1908 974"
+Loc="0 0 1919 985"
 State=1
 Number=0
 
