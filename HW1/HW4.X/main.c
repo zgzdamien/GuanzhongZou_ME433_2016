@@ -1,6 +1,8 @@
 #include<xc.h>           // processor SFR definitions
 #include<sys/attribs.h>  // __ISR macro
-#include "NU32.h"  
+#include"i2c_master_noint.h"
+
+#define CS LATBbits.LATB9       // chip select pin
 
 // DEVCFG0
 #pragma config DEBUG = OFF // no debugging
@@ -37,6 +39,101 @@
 #pragma config FUSBIDIO = ON// USB pins controlled by USB module
 #pragma config FVBUSONIO = ON // USB BUSON controlled by USB module
 
+// send a byte via spi and return the response
+unsigned char spi_io(unsigned char o) {
+  SPI1BUF = o;
+  while(!SPI1STATbits.SPIRBF) { // wait to receive the byte
+    ;
+  }
+  return SPI1BUF;
+}
+
+// initialize spi1 
+void initSPI1() {
+  // set up the chip select pin as an output
+  // when a command is beginning (clear CS to low) and when it
+  // is ending (set CS high)
+  TRISBbits.TRISB7 = 0; // select pin as output 	
+  CS = 1;// output high
+
+  // Master - SPI1, pins are: SDI1(F4), SDO1(F5), SCK1(F13).  
+  // we manually control SS4 as a digital output (F12)
+  // since the pic is just starting, we know that spi is off. We rely on defaults here
+ 
+  // setup spi1
+  RPB8Rbits.RPB8R = 0b0011;	// set RPB8 as SDOut
+  SPI1CON = 0;              // turn off the spi module and reset it
+  SPI1BUF;                  // clear the rx buffer by reading from it
+  SPI1BRG = 0x3;            // baud rate to 10 MHz [SPI4BRG = (80000000/(2*desired))-1]
+  SPI1STATbits.SPIROV = 0;  // clear the overflow bit
+  SPI1CONbits.CKE = 1;      // data changes when clock goes from hi to lo (since CKP is 0)
+  SPI1CONbits.MSTEN = 1;    // master operation
+  SPI1CONbits.ON = 1;       // turn on spi 1
+  
+
+                            // send a ram set status command.
+//  CS = 0;                   // enable the ram
+//  spi_io(0x01);             // ram write status
+//  spi_io(0x41);             // sequential mode (mode = 0b01), hold disabled (hold = 0)
+//  CS = 1;                   // finish the command
+}
+
+void setVoltage(char channel, unsigned int voltage) {
+		
+//	int dig_vol = 0;
+//	int data_sent = 0;
+//	dig_vol = (2^8 * floor(voltage / 3.3));
+	switch(channel) {
+
+	case 'A' :
+   		//data_sent = 0x7000 | (dig_vol<<4);
+		//data_sent = 0x70 | (voltage>>4);
+        CS = 0;
+        spi_io(0x70 | (voltage>>4));
+        spi_io(voltage<<4);
+        CS = 1;
+    break; 
+	
+	case 'B' :
+   		//data_sent = 0xF000 | (dig_vol<<4);
+    	//data_sent = 0xF000 | (voltage<<4);
+        CS = 0;
+        spi_io(0xF0 | (voltage>>4));
+        spi_io(voltage<<4);
+        CS = 1;
+    break; 
+
+    }
+//	CS = 0;
+//	spi_io(data_sent & 0xFF00>> 8);  // the most significant byte
+//	spi_io(data_sent & 0x00FF);      // the least significant byte 
+    
+    
+//	CS = 1;
+  
+   
+}
+
+
+void i2c_init(void){
+    ANSELBbits.ANSB2 = 0;
+    i2c_master_setup();
+}
+
+void i2c_expander_init(void){
+    i2c_master_start();
+    i2c_master_send(0x40); //OPCODE
+    i2c_master_send(0x00);  //ADDRESS
+    i2c_master_send(0xF0); //set GP7-GP4 as inputs, GP3-GP0 as output
+    i2c_master_stop();
+    //set latch
+   
+    i2c_master_start();
+    i2c_master_send(0x40);
+    i2c_master_send(0x0A);
+    i2c_master_send(0x0F);
+    i2c_master_stop();
+}
 
 //7SDI 8SDO 9SS
 #define CS LATBbits.LATB9       // chip select pin
@@ -63,13 +160,20 @@ int main() {
      TRISAbits.TRISA4 = 1; //set portA4 as input pin for button input
      TRISBbits.TRISB4 = 0; //set port B4 as output pin for LED
     
+     
+     i2c_init();
+     i2c_expander_init();
+     
     __builtin_enable_interrupts();
+    
+    
+    
     
     while(1) {
 	    // use _CP0_SET_COUNT(0) and _CP0_GET_COUNT() to test the PIC timing
         
 		// remember the core timer runs at half the CPU speed
-        if (PORTAbits.RA4 == 0) { //button pressed
+       /* if (PORTAbits.RA4 == 0) { //button pressed
                 LATBbits.LATB4=0; //LED off
             } 
         else if(PORTAbits.RA4 == 1) { //button not pressed
@@ -83,7 +187,7 @@ int main() {
             {
                 LATBbits.LATB4=0; //set LED to 0
             }
-            }
+            }*/
               
         
     }
