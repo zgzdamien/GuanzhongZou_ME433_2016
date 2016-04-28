@@ -117,6 +117,7 @@ void setVoltage(char channel, unsigned int voltage) {
 
 void i2c_init(void){
     ANSELBbits.ANSB2 = 0;
+    ANSELBbits.ANSB3 = 0;
     i2c_master_setup();
 }
 
@@ -131,8 +132,34 @@ void i2c_expander_init(void){
     i2c_master_start();
     i2c_master_send(0x40);
     i2c_master_send(0x0A);
-    i2c_master_send(0x0F);
+    i2c_master_send(0x00);
     i2c_master_stop();
+}
+
+void setExpander(char pin,char level)
+{
+    char value= level<<pin;
+    
+   
+    i2c_master_start();
+    i2c_master_send(0x40);
+    i2c_master_send(0x0A);
+    i2c_master_send(value);
+    i2c_master_stop();
+}
+
+char getExpander()
+{
+    char input=0x00;
+    i2c_master_start();
+    i2c_master_send(0x40);
+    i2c_master_send(0x09);
+    i2c_master_restart();
+    i2c_master_send(0x41);
+    input=i2c_master_recv();
+    i2c_master_ack(1);
+    i2c_master_stop();
+    return input;
 }
 
 //7SDI 8SDO 9SS
@@ -166,10 +193,11 @@ int main() {
      
     __builtin_enable_interrupts();
     
-    
-    
-    
+   // if(getExpander()==0x80)
+    //setExpander(0,1);
     while(1) {
+        if(getExpander()!=0x00)
+        setExpander(0,1);
 	    // use _CP0_SET_COUNT(0) and _CP0_GET_COUNT() to test the PIC timing
         
 		// remember the core timer runs at half the CPU speed
@@ -188,6 +216,7 @@ int main() {
                 LATBbits.LATB4=0; //set LED to 0
             }
             }*/
+        
               
         
     }
