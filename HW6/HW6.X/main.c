@@ -2,7 +2,8 @@
 #include<sys/attribs.h>  // __ISR macro
 #include"i2c_master_noint.h"
 
-#define CS LATBbits.LATB9       // chip select pin
+
+#define SLAVE_ADDR =  0b1101011
 
 // DEVCFG0
 #pragma config DEBUG = OFF // no debugging
@@ -27,7 +28,7 @@
 
 // DEVCFG2 - get the CPU clock to 48MHz
 #pragma config FPLLIDIV = DIV_2 // divide input clock to be in range 4-5MHz
-#pragma config FPLLMUL = MUL_24 // multiply clock after FPLLIDIV
+#pragma config FPLLMUL = MUL_20 // multiply clock after FPLLIDIV
 #pragma config FPLLODIV = DIV_2 // divide clock after FPLLMUL to get 48MHz
 #pragma config UPLLIDIV = DIV_2 // divider for the 8MHz input clock, then multiply by 12 to get 48MHz for USB
 #pragma config UPLLEN = ON // USB clock on
@@ -39,132 +40,116 @@
 #pragma config FUSBIDIO = ON// USB pins controlled by USB module
 #pragma config FVBUSONIO = ON // USB BUSON controlled by USB module
 
-// send a byte via spi and return the response
-unsigned char spi_io(unsigned char o) {
-  SPI1BUF = o;
-  while(!SPI1STATbits.SPIRBF) { // wait to receive the byte
-    ;
-  }
-  return SPI1BUF;
+   static signed short temperature;
+   static signed short x_ang_acc;
+   static signed short y_ang_acc;
+   static signed short z_ang_acc;
+   static signed short x_lin_acc;
+   static signed short y_lin_acc;
+   static signed short z_lin_acc;
+
+void __ISR(_TIMER_2_VECTOR, IPL5SOFT) PWMcontroller(void) { // step 1: the ISR
+
+  OC1RS = 5000+5000*(x_lin_acc/32768.0);
+  OC2RS = 5000+5000*(y_lin_acc/32768.0);
+
+  IFS0bits.T2IF = 0;
 }
-
-// initialize spi1 
-void initSPI1() {
-  // set up the chip select pin as an output
-  // when a command is beginning (clear CS to low) and when it
-  // is ending (set CS high)
-  TRISBbits.TRISB7 = 0; // select pin as output 	
-  CS = 1;// output high
-
-  // Master - SPI1, pins are: SDI1(F4), SDO1(F5), SCK1(F13).  
-  // we manually control SS4 as a digital output (F12)
-  // since the pic is just starting, we know that spi is off. We rely on defaults here
- 
-  // setup spi1
-  RPB8Rbits.RPB8R = 0b0011;	// set RPB8 as SDOut
-  SPI1CON = 0;              // turn off the spi module and reset it
-  SPI1BUF;                  // clear the rx buffer by reading from it
-  SPI1BRG = 0x3;            // baud rate to 10 MHz [SPI4BRG = (80000000/(2*desired))-1]
-  SPI1STATbits.SPIROV = 0;  // clear the overflow bit
-  SPI1CONbits.CKE = 1;      // data changes when clock goes from hi to lo (since CKP is 0)
-  SPI1CONbits.MSTEN = 1;    // master operation
-  SPI1CONbits.ON = 1;       // turn on spi 1
-  
-
-                            // send a ram set status command.
-//  CS = 0;                   // enable the ram
-//  spi_io(0x01);             // ram write status
-//  spi_io(0x41);             // sequential mode (mode = 0b01), hold disabled (hold = 0)
-//  CS = 1;                   // finish the command
-}
-
-void setVoltage(char channel, unsigned int voltage) {
-		
-//	int dig_vol = 0;
-//	int data_sent = 0;
-//	dig_vol = (2^8 * floor(voltage / 3.3));
-	switch(channel) {
-
-	case 'A' :
-   		//data_sent = 0x7000 | (dig_vol<<4);
-		//data_sent = 0x70 | (voltage>>4);
-        CS = 0;
-        spi_io(0x70 | (voltage>>4));
-        spi_io(voltage<<4);
-        CS = 1;
-    break; 
-	
-	case 'B' :
-   		//data_sent = 0xF000 | (dig_vol<<4);
-    	//data_sent = 0xF000 | (voltage<<4);
-        CS = 0;
-        spi_io(0xF0 | (voltage>>4));
-        spi_io(voltage<<4);
-        CS = 1;
-    break; 
-
-    }
-//	CS = 0;
-//	spi_io(data_sent & 0xFF00>> 8);  // the most significant byte
-//	spi_io(data_sent & 0x00FF);      // the least significant byte 
-    
-    
-//	CS = 1;
-  
-   
-}
-
-
 void i2c_init(void){
     ANSELBbits.ANSB2 = 0;
     ANSELBbits.ANSB3 = 0;
     i2c_master_setup();
 }
 
-void i2c_expander_init(void){
+void i2c_imu_init(void){
+    //CTRL1_XL
     i2c_master_start();
-    i2c_master_send(0x40); //OPCODE
-    i2c_master_send(0x00);  // Reg ADDRESS
-    i2c_master_send(0xF0); //set GP7-GP4 as inputs, GP3-GP0 as output
+    i2c_master_send(0b11010110); //send device address 
+    i2c_master_send(0x10);
+    i2c_master_send(0x80); //10000000
     i2c_master_stop();
-    //set latch
-   
+    
+    //CTRL2_G
     i2c_master_start();
-    i2c_master_send(0x40);
-    i2c_master_send(0x0A);
-    i2c_master_send(0x00);
+    i2c_master_send(0b11010110); //send device address 
+    i2c_master_send(0x11); //register add
+    i2c_master_send(0x80);
     i2c_master_stop();
+    
+    //CTRL3_C
+    i2c_master_start();
+    i2c_master_send(0b11010110); //send device address 
+    i2c_master_send(0x12); //register add
+    i2c_master_send(0x04);
+    i2c_master_stop();   
+    
 }
 
-void setExpander(char pin,char level)
+
+void I2C_read_multiple(char address, char reg, unsigned char *data, char length)
 {
-    char value= level<<pin;
-    i2c_master_start();
-    i2c_master_send(0x40);
-    i2c_master_send(0x0A);
-    i2c_master_send(value);
-    i2c_master_stop();
-}
+    int i;
+    i2c_master_start(); // make the start bit
 
-unsigned char getExpander()
-{
-    i2c_master_start();
-    i2c_master_send(0x40);
-    i2c_master_send(0x09);
-    i2c_master_restart();
-    i2c_master_send(0x41);
-    unsigned char input=i2c_master_recv();
-    i2c_master_ack(1);
-    i2c_master_stop();
-    return input;
-}
+    i2c_master_send(address<<1|0); // write the address, shifted left by 1, or'ed with a 0 to indicate writing
 
-//7SDI 8SDO 9SS
-#define CS LATBbits.LATB9       // chip select pin
+    i2c_master_send(reg); // the register to read from
+
+    i2c_master_restart(); // make the restart bit
+
+    i2c_master_send(address<<1|1); // write the address, shifted left by 1, or'ed with a 1 to indicate reading
+
+    for( i=0; i<length; i++)
+    {
+        unsigned char r = i2c_master_recv(); // save the value returned
+        *data = r;
+        if(i==(length-1))
+            i2c_master_ack(1); // make the ack so the slave knows we got it
+        else
+        {
+            i2c_master_ack(0); // make the ack so the slave knows we got it
+            data++; 
+        }
+            
+         
+             
+    }
+    i2c_master_stop(); // make the stop bit
+}
+    
+    
+    //read
+    /*
+          * 
+i2c_master_start(); // make the start bit
+
+i2c_master_send(12<1|0); // write the address, shifted left by 1, or'ed with a 0 to indicate writing
+
+i2c_master_send(7); // the register to read from
+
+i2c_master_restart(); // make the restart bit
+
+i2c_master_send(12<1|1); // write the address, shifted left by 1, or'ed with a 1 to indicate reading
+
+char r = i2c_master_recv(); // save the value returned
+
+i2c_master_ack(1); // make the ack so the slave knows we got it
+
+i2c_master_stop(); // make the stop bit
+     */
+
+
 
 int main() {
-    unsigned char master_read  = 0x00; 
-
+    
+    unsigned char whoami;
+    unsigned char value[14];
+    signed short temp_val;
+    signed short parameter [7];
+   
+    
+    int count;
+    
     __builtin_disable_interrupts();
 
     // set the CP0 CONFIG register to indicate that kseg0 is cacheable (0x3)
@@ -180,30 +165,74 @@ int main() {
     DDPCONbits.JTAGEN = 0;
     
     // do your TRIS and LAT commands here
-   
-     
-     TRISAbits.TRISA4 = 1; //set portA4 as input pin for button input
+
      TRISBbits.TRISB4 = 0; //set port B4 as output pin for LED
-    
+     LATBbits.LATB4=0;
      
      i2c_init();
-     i2c_expander_init();
+     i2c_imu_init();
+     
+    // for Timer2
+    PR2 = 9999;                   // period = (PR2+1) * N * 20.8 ns = 0.001 s, 1 kHz
+    TMR2 = 0;                     // initial TMR2 count is 0
+    T2CONbits.TCKPS = 0b010;      // Timer2 prescaler N=16 (1:16)
+    T2CONbits.ON = 1;             // turn on Timer2
+
+    OC1CONbits.OCM = 0b110;       // PWM mode without fault pin; other OC1CON bits are defaults
+    OC1CONbits.ON = 1;            // turn on OC1
+    OC1CONbits.OC32 = 0;
+    OC1CONbits.OCTSEL = 0;        // select Timer2
+    
+    OC2CONbits.OCM = 0b110;       // PWM mode without fault pin; other OC1CON bits are defaults
+    OC2CONbits.ON = 1;            // turn on OC2
+    OC2CONbits.OC32 = 0;
+    OC2CONbits.OCTSEL = 0;        // select Timer2
+
+    IPC2bits.T2IP = 5;            // step 4: interrupt priority
+    IPC2bits.T2IS = 0;            // step 4: interrupt priority
+    IFS0bits.T2IF = 0;            // step 5: clear the int flag
+    IEC0bits.T2IE = 1;            // step 6: enable Timer2 by setting IEC0<11>
+    
+    RPB15Rbits.RPB15R = 0b0101; // assign OC1 to RB15
+    RPA1Rbits.RPA1R = 0b0101; // assign OC2 to RA1
+    
      
     __builtin_enable_interrupts();
     
-  
+
    
     
     while(1) {
-        master_read = getExpander();
-    if(master_read>>7 ==0x01)
-   {
-          setExpander(0,1);
-   }else{
         
-        setExpander(0,0);
-   }
+        _CP0_SET_COUNT(0);
         
+        while(_CP0_GET_COUNT() < 100000) { 
+            ;
+       }
+            I2C_read_multiple(0b1101011, 0x0F,&whoami, 1);
+
+            if(whoami==0x69)
+           {
+                LATBbits.LATB4=1;
+           }
+           while(_CP0_GET_COUNT() < 200000) { 
+            ;
+           }
+            LATBbits.LATB4=0;
+        I2C_read_multiple(0b1101011, 0x20, value, 14);
+        for(count=0;count<7; count++)
+        {
+             temp_val = value[2*count+1];
+             temp_val = (temp_val<< 8)| value[2*count];
+             parameter[count]=temp_val;
+        }
+        temperature = parameter[0];
+        x_ang_acc = parameter[1];
+        y_ang_acc = parameter[2];
+        z_ang_acc = parameter[3];
+        x_lin_acc = parameter[4];
+        x_lin_acc = parameter[5];
+        x_lin_acc = parameter[6];   
     }
     
     
