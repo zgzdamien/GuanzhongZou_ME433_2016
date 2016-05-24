@@ -1,8 +1,9 @@
 #include<xc.h>           // processor SFR definitions
 #include<sys/attribs.h>  // __ISR macro
 #include"ILI9163C.h"
+#include"i2c_master_noint.h"
 
-
+#define SLAVE_ADDR =  0b1101011
 // DEVCFG0
 #pragma config DEBUG = OFF // no debugging
 #pragma config JTAGEN = OFF // no jtag
@@ -38,6 +39,77 @@
 #pragma config FUSBIDIO = ON// USB pins controlled by USB module
 #pragma config FVBUSONIO = ON // USB BUSON controlled by USB module
 
+static signed short temperature;
+static signed short x_ang_acc;
+static signed short y_ang_acc;
+static signed short z_ang_acc;
+static signed short x_lin_acc;
+static signed short y_lin_acc;
+static signed short z_lin_acc;
+
+
+void i2c_init(void){
+    ANSELBbits.ANSB2 = 0;
+    ANSELBbits.ANSB3 = 0;
+    i2c_master_setup();
+}
+
+void i2c_imu_init(void){
+    //CTRL1_XL
+    i2c_master_start();
+    i2c_master_send(0b11010110); //send device address 
+    i2c_master_send(0x10);
+    i2c_master_send(0x80); //10000000
+    i2c_master_stop();
+    
+    //CTRL2_G
+    i2c_master_start();
+    i2c_master_send(0b11010110); //send device address 
+    i2c_master_send(0x11); //register add
+    i2c_master_send(0x80);
+    i2c_master_stop();
+    
+    //CTRL3_C
+    i2c_master_start();
+    i2c_master_send(0b11010110); //send device address 
+    i2c_master_send(0x12); //register add
+    i2c_master_send(0x04);
+    i2c_master_stop();   
+    
+}
+
+
+void I2C_read_multiple(char address, char reg, unsigned char *data, char length)
+{
+    int i;
+    i2c_master_start(); // make the start bit
+
+    i2c_master_send(address<<1|0); // write the address, shifted left by 1, or'ed with a 0 to indicate writing
+
+    i2c_master_send(reg); // the register to read from
+
+    i2c_master_restart(); // make the restart bit
+
+    i2c_master_send(address<<1|1); // write the address, shifted left by 1, or'ed with a 1 to indicate reading
+
+    for( i=0; i<length; i++)
+    {
+        unsigned char r = i2c_master_recv(); // save the value returned
+        *data = r;
+        if(i==(length-1))
+            i2c_master_ack(1); // make the ack so the slave knows we got it
+        else
+        {
+            i2c_master_ack(0); // make the ack so the slave knows we got it
+            data++; 
+        }
+            
+         
+             
+    }
+    i2c_master_stop(); // make the stop bit
+}
+
 
 char get_bit(char c, int n)
 {
@@ -58,26 +130,28 @@ void Draw_char(char c, unsigned short x, unsigned short y)
             {
                 LCD_drawPixel(x+i,y+j,GREEN);
             }
+            else
+            {
+                LCD_drawPixel(x+i,y+j,BLACK);
+            }
         }
     }
     
 }
 
-void Draw_string(char* str, unsigned short x, unsigned short y)
+void Draw_string(char* arr, unsigned short x, unsigned short y)
 {
-    char arr[100];
     int i=0;
     unsigned short x_start=x;
-    sprintf(arr, str);
     while(arr[i])
     {
-        if(x<120 && y<120)
+        if(x<124 && y<120)
         {
             Draw_char(arr[i],x,y);
              x+=6;
         }
        
-        else if(x>=120 && y<112)
+        else if(x>=124 && y<112)
         {
             y+=10;
             x=x_start;
@@ -90,6 +164,12 @@ void Draw_string(char* str, unsigned short x, unsigned short y)
 
 int main() {
  
+    unsigned char whoami;
+    unsigned char value[14];
+    signed short temp_val;
+    signed short parameter [7];
+    
+    int count;
     
     __builtin_disable_interrupts();
 
@@ -109,7 +189,10 @@ int main() {
 
      TRISBbits.TRISB4 = 0; //set port B4 as output pin for LED
      LATBbits.LATB4=0;
-   
+     
+     i2c_init();
+     i2c_imu_init();
+     
      SPI1_init();
      LCD_init();
      
@@ -121,14 +204,59 @@ int main() {
    
    unsigned short x_pos;
    unsigned short y_pos;
-   
+   char arr[100];
    char *str="Data from IMU:";
    
-   Draw_string(str,10,10);
-   
+    sprintf(arr, str);
+    Draw_string(arr,10,10);
     
     while(1) {
-         
+           
+         _CP0_SET_COUNT(0);
+        
+        while(_CP0_GET_COUNT() < 100000) { 
+            ;
+       }
+            I2C_read_multiple(0b1101011, 0x0F,&whoami, 1);
+
+            if(whoami==0x69)
+           {
+                LATBbits.LATB4=1;
+                //sprintf(arr,"%x",whoami);
+                //Draw_string(arr,10,30);
+           }
+           while(_CP0_GET_COUNT() < 200000) { 
+            ;
+           }
+            LATBbits.LATB4=0;
+        I2C_read_multiple(0b1101011, 0x20, value, 14);
+        for(count=0;count<7; count++)
+        {
+             temp_val = ( value[2*count+1]<< 8)| value[2*count];
+             parameter[count]=temp_val; 
+        }
+        temperature = parameter[0];
+        sprintf(arr,"Temperature: %d",-parameter[0]);
+        Draw_string(arr,10,30+0);
+        x_ang_acc = parameter[1];
+        sprintf(arr,"X_angl: %d",parameter[1]);
+        Draw_string(arr,10,30+10);
+        y_ang_acc = parameter[2];
+        sprintf(arr,"Y_angl: %d",parameter[2]);
+        Draw_string(arr,10,30+20);
+        z_ang_acc = parameter[3];
+        sprintf(arr,"Z_angl: %d",parameter[3]);
+        Draw_string(arr,10,30+30);
+        x_lin_acc = parameter[4];
+        sprintf(arr,"X_acc: %f",-parameter[4]/32768.0*20);
+        Draw_string(arr,10,30+40);
+        y_lin_acc = parameter[5];
+        sprintf(arr,"Y_acc: %f",-parameter[5]/32768.0*20);
+        Draw_string(arr,10,30+50);
+        z_lin_acc = parameter[6];
+        sprintf(arr,"Z_acc: %f",-parameter[6]/32768.0*20);
+        Draw_string(arr,10,30+60);
+     
     }
     
     
