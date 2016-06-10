@@ -164,7 +164,8 @@ unsigned char getExpander()
 
 int main() {
     unsigned char master_read  = 0x00; 
-
+    char output_b_dig, output_a_dig, output_a, output_b;
+    int t1,t2;
     __builtin_disable_interrupts();
 
     // set the CP0 CONFIG register to indicate that kseg0 is cacheable (0x3)
@@ -196,6 +197,26 @@ int main() {
     
     while(1) {
         master_read = getExpander();
+        if( _CP0_GET_COUNT() >= (SYS_FREQ/1000/2)*1 )// count up to 1ms // greater than (SYS_FREQ /2*countingseconds)
+            {
+                output_a = 255 * (sin(2*PI*10*t1) + 1)/2;//sin(2*pi*frequency*t) for 8-bit resolution
+                output_a_dig = (unsigned int) output_a;
+                output_a_dig = output_a_dig & 0xFF;
+                setVoltage('A', output_a_dig);
+
+                output_b = 255 * t2 /0.2;// triangle wave
+                if( t2 >= 0.2)
+                    t2 = 0;
+                
+                output_b_dig = (unsigned int) output_b;
+                output_b_dig = output_b_dig & 0xFF;
+                setVoltage('B', output_b_dig);
+
+                _CP0_SET_COUNT(0); // reset the counter
+                
+                t1 = t1 + 0.001;
+                t2 = t2 + 0.001;
+            }
     if(master_read>>7 ==0x01)
    {
           setExpander(0,1);

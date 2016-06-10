@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "Z:\\usb-serial-for-android-master\\usbSerialExamples\\build\\intermediates\\res\\merged\\debug\\layout\\serial_console.xml",
+        "source": "Z:\\usb-serial-for-android-master\\usbSerialExamples\\src\\main\\res\\layout\\serial_console.xml"
+    },
+    {
+        "merged": "Z:\\usb-serial-for-android-master\\usbSerialExamples\\build\\intermediates\\res\\merged\\debug\\layout\\main.xml",
+        "source": "Z:\\usb-serial-for-android-master\\usbSerialExamples\\src\\main\\res\\layout\\main.xml"
+    }
+]
